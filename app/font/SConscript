@@ -1,0 +1,15 @@
+from building import *
+import os
+
+font_objs = []
+
+cwd = GetCurrentDir()
+font_file = os.path.join(cwd, 'DroidSansFallback.ttf')
+
+if not os.path.exists(font_file):
+    print(f"Warning: Font file does not exist: {font_file}")
+else:
+    font_objs = Env.FontFile(Glob('DroidSansFallback.ttf'))
+    font_objs = DefineGroup('resource', font_objs, depend=['PKG_USING_LITTLEVGL2RTT'])
+
+Return('font_objs')

@@ -1,0 +1,29 @@
+import os
+from building import *
+
+cwd = GetCurrentDir()
+env = GetCurrentEnv()
+
+env.Replace(CXXFLAGS=str(env.get('CXXFLAGS', '')) + ' -std=gnu++17 -fno-exceptions -fno-rtti')
+
+src = (Glob('*.c') + Glob('ascii/*.cpp') + Glob('ascii/buddies/*.cpp') +
+       Glob('bridge/*.cpp') + Glob('core/*.cpp') + Glob('storage/*.c') +
+       Glob('transport/*.c') + Glob('platform/*.c') +
+       Glob('ui/buddy_ui_data.c'))
+
+if GetDepend('BUDDY_UI_FRONTEND_390X450'):
+    src += Glob('ui/buddy_ui_390x450.c')
+cpppath = [
+    cwd,
+    os.path.join(cwd, 'ascii'),
+    os.path.join(cwd, 'bridge'),
+    os.path.join(cwd, 'core'),
+    os.path.join(cwd, 'platform'),
+    os.path.join(cwd, 'storage'),
+    os.path.join(cwd, 'transport'),
+    os.path.join(cwd, 'ui'),
+]
+
+group = DefineGroup('BuddyApp', src, depend=[''], CPPPATH=cpppath)
+
+Return('group')

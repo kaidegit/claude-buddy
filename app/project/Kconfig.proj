@@ -1,0 +1,35 @@
+# Application-specific configuration.
+config CUSTOM_MEM_MAP
+    bool
+    select custom_mem_map
+    default y if !SOC_SIMULATOR
+
+config IMAGE_CACHE_IN_PSRAM_SIZE
+    int "LVGL image cache size in PSRAM"
+    depends on BSP_USING_PSRAM
+    default 1048576
+
+config IMAGE_CACHE_IN_PSRAM_SIZE
+    int
+    depends on !BSP_USING_PSRAM
+    default 0
+
+config IMAGE_CACHE_IN_SRAM_SIZE
+    int "LVGL image cache size in SRAM"
+    default 0
+
+choice BUDDY_UI_FRONTEND
+    prompt "Buddy UI frontend"
+    default BUDDY_UI_FRONTEND_390X450
+    help
+        Select the LVGL frontend at build time. Backend data access stays behind
+        the explicit buddy_ui_data API so each board can use a fixed UI layout
+        without changing protocol or storage behavior.
+
+config BUDDY_UI_FRONTEND_390X450
+    bool "390x450 fixed layout"
+    help
+        Current Huangshan Pi LVGL frontend for the 390x450 display. Keep this as
+        the default to avoid changing the existing screen behavior.
+
+endchoice

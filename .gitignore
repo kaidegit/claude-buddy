@@ -1,0 +1,17 @@
+# Private local planning and agent workspace files.
+AGENTS.md
+Claude.md
+.vscode/
+.codex/
+.claude/
+prd/
+
+# SiFli/RT-Thread build output.
+build_*/
+app/project/build_*/
+*.pyc
+__pycache__/
+.sconsign.dblite
+
+# macOS metadata.
+.DS_Store

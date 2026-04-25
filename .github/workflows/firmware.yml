@@ -1,0 +1,41 @@
+name: Firmware
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install host tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install SiFli SDK profile
+        run: ./SiFli-SDK/install.sh
+
+      - name: Run host tests
+        run: ./tests/host/run_host_tests.sh
+
+      - name: Build HCPU firmware
+        shell: bash
+        working-directory: app/project
+        run: |
+          source ../../SiFli-SDK/export.sh
+          scons --board=sf32lb52-lchspi-ulp -j2
+
+      - name: Print firmware size
+        shell: bash
+        run: |
+          source SiFli-SDK/export.sh
+          arm-none-eabi-size app/project/build_sf32lb52-lchspi-ulp_hcpu/main.elf
