@@ -1,5 +1,7 @@
 # Claude Desktop Buddy for SiFli
 
+![Claude Desktop Buddy for SiFli hardware](docs/image/claude-desktop.png)
+
 Firmware port of `anthropics/claude-desktop-buddy` for the SiFli SF32LB52
 platform, currently targeting the Huangshan Pi `sf32lb52-lchspi-ulp` HCPU
 project.
