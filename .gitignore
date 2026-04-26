@@ -8,6 +8,7 @@ prd/
 
 # SiFli/RT-Thread build output.
 build_*/
+build/
 app/project/build_*/
 *.pyc
 __pycache__/

@@ -1,0 +1,6 @@
+#ifndef BUDDY_SIM_RTCONFIG_H
+#define BUDDY_SIM_RTCONFIG_H
+
+#define BUDDY_UI_FRONTEND_390X450 1
+
+#endif
