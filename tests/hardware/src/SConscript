@@ -1,0 +1,27 @@
+import os
+from building import *
+
+cwd = GetCurrentDir()
+env = GetCurrentEnv()
+
+env.Replace(CXXFLAGS=str(env.get('CXXFLAGS', '')) + ' -std=gnu++17 -fno-exceptions -fno-rtti')
+
+root = os.path.abspath(os.path.join(cwd, '../../..'))
+app_src = os.path.join(root, 'app/src')
+unity_src = os.path.join(root, 'third_party/unity/src')
+cjson_src = os.path.join(os.getenv('SIFLI_SDK'), 'external/cJSON-1.7.17')
+
+src = Glob('*.c') + Glob('*.cpp')
+
+cpppath = [
+    cwd,
+    unity_src,
+    app_src,
+    os.path.join(app_src, 'core'),
+    cjson_src,
+]
+
+group = DefineGroup('BuddyHardwareTests', src, depend=[''], CPPPATH=cpppath,
+                    CPPDEFINES=['UNITY_INCLUDE_CONFIG_H'])
+
+Return('group')
