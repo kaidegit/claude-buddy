@@ -19,9 +19,11 @@ struct PrefStore {
     bool save_ok = true;
     int save_calls = 0;
     int species_save_calls = 0;
+    int stats_save_calls = 0;
     std::string name;
     std::string owner;
     uint8_t species = buddy::BuddyProtocol::kGifSpeciesSentinel;
+    buddy::BuddyProtocol::PetStats stats;
 };
 
 struct ResetStore {
@@ -109,6 +111,31 @@ bool prefs_save_species(uint8_t species, void *context)
 
     store->species = species;
     ++store->species_save_calls;
+    return true;
+}
+
+bool prefs_load_stats(buddy::BuddyProtocol::PetStats *stats, void *context)
+{
+    auto *store = static_cast<PrefStore *>(context);
+    if (store == nullptr || !store->load_ok || stats == nullptr)
+    {
+        return false;
+    }
+
+    *stats = store->stats;
+    return true;
+}
+
+bool prefs_save_stats(const buddy::BuddyProtocol::PetStats *stats, void *context)
+{
+    auto *store = static_cast<PrefStore *>(context);
+    if (store == nullptr || !store->save_ok || stats == nullptr)
+    {
+        return false;
+    }
+
+    store->stats = *stats;
+    ++store->stats_save_calls;
     return true;
 }
 
@@ -307,6 +334,8 @@ buddy::BuddyProtocol::PreferenceHooks prefs_hooks(PrefStore &store)
     hooks.save_identity = prefs_save_identity;
     hooks.load_species = prefs_load_species;
     hooks.save_species = prefs_save_species;
+    hooks.load_stats = prefs_load_stats;
+    hooks.save_stats = prefs_save_stats;
     hooks.context = &store;
     return hooks;
 }
@@ -367,6 +396,11 @@ void test_status_ack()
     assert(contains(harness.sent[0], "\"sec\":true"));
     assert(contains(harness.sent[0], "\"species\":255"));
     assert(contains(harness.sent[0], "\"species_count\":18"));
+    assert(contains(harness.sent[0], "\"appr\":0"));
+    assert(contains(harness.sent[0], "\"deny\":0"));
+    assert(contains(harness.sent[0], "\"mood\":2"));
+    assert(contains(harness.sent[0], "\"fed\":0"));
+    assert(contains(harness.sent[0], "\"energy\":3"));
     assert(harness.sent[0].back() == '\n');
 }
 
@@ -507,6 +541,82 @@ void test_species_command_rejects_invalid_index()
     assert(protocol.current_species() == 3);
     assert(prefs.species == 3);
     assert(prefs.species_save_calls == 0);
+}
+
+void test_permission_decisions_update_pet_stats()
+{
+    Harness harness;
+    PrefStore prefs;
+    buddy::BuddyProtocol protocol;
+    protocol.set_hooks(protocol_hooks(harness, prefs_hooks(prefs)));
+
+    handle(protocol, "{\"prompt\":{\"id\":\"req_1\"}}");
+    assert(protocol.send_permission_once(6234));
+
+    const auto fast = protocol.pet_stats_view(6234);
+    assert(fast.approvals == 1);
+    assert(fast.denials == 0);
+    assert(fast.median_velocity == 5);
+    assert(fast.mood == 4);
+    assert(prefs.stats_save_calls == 1);
+
+    handle(protocol, "{\"prompt\":{\"id\":\"req_2\"}}");
+    assert(protocol.send_permission_deny());
+
+    const auto denied = protocol.pet_stats_view(7000);
+    assert(denied.approvals == 1);
+    assert(denied.denials == 1);
+    assert(prefs.stats_save_calls == 2);
+}
+
+void test_token_delta_updates_level_and_fed()
+{
+    Harness harness;
+    PrefStore prefs;
+    buddy::BuddyProtocol protocol;
+    protocol.set_hooks(protocol_hooks(harness, prefs_hooks(prefs)));
+
+    handle(protocol, "{\"tokens\":100000,\"tokens_today\":100000}");
+    assert(protocol.pet_stats_view(1234).tokens == 0);
+    assert(prefs.stats_save_calls == 0);
+
+    handle(protocol, "{\"tokens\":156000,\"tokens_today\":156000}");
+
+    const auto view = protocol.pet_stats_view(1234);
+    assert(view.tokens == 56000);
+    assert(view.level == 1);
+    assert(view.fed == 1);
+    assert(prefs.stats_save_calls == 1);
+}
+
+void test_stats_load_and_nap_energy()
+{
+    Harness harness;
+    PrefStore prefs;
+    prefs.stats.approvals = 3;
+    prefs.stats.denials = 1;
+    prefs.stats.velocity[0] = 3;
+    prefs.stats.velocity[1] = 20;
+    prefs.stats.velocity[2] = 8;
+    prefs.stats.velocity_count = 3;
+    prefs.stats.tokens = 125000;
+    buddy::BuddyProtocol protocol;
+    protocol.set_hooks(protocol_hooks(harness, prefs_hooks(prefs)));
+
+    auto loaded = protocol.pet_stats_view(0);
+    assert(loaded.approvals == 3);
+    assert(loaded.denials == 1);
+    assert(loaded.median_velocity == 8);
+    assert(loaded.level == 2);
+    assert(loaded.fed == 5);
+
+    assert(protocol.record_nap_end(3660, 1000));
+    auto rested = protocol.pet_stats_view(1000);
+    assert(rested.nap_seconds == 3660);
+    assert(rested.energy == 5);
+    auto drained = protocol.pet_stats_view(1000 + 4U * 3600000U);
+    assert(drained.energy == 3);
+    assert(prefs.stats_save_calls == 1);
 }
 
 void test_unknown_cmd()
@@ -844,6 +954,9 @@ int main()
     test_species_command_saves_index();
     test_species_command_accepts_gif_sentinel();
     test_species_command_rejects_invalid_index();
+    test_permission_decisions_update_pet_stats();
+    test_token_delta_updates_level_and_fed();
+    test_stats_load_and_nap_energy();
     test_unknown_cmd();
     test_unpair();
     test_delete_character_command();

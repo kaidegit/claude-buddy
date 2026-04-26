@@ -23,6 +23,7 @@
 #define BUDDY_PREFS_KEY_LED "led"
 #define BUDDY_PREFS_KEY_TRANSCRIPT "transcript"
 #define BUDDY_PREFS_KEY_SPECIES "species"
+#define BUDDY_PREFS_KEY_STATS "stats"
 
 #define BUDDY_PREFS_DEFAULT_BRIGHTNESS 80
 #define BUDDY_PREFS_MIN_BRIGHTNESS 20
@@ -50,6 +51,14 @@ static uint8_t buddy_prefs_clamp_brightness(int32_t value)
         return BUDDY_PREFS_MAX_BRIGHTNESS;
     }
     return (uint8_t)value;
+}
+
+static void buddy_prefs_stats_defaults(buddy_pet_stats_t *stats)
+{
+    if (stats != NULL)
+    {
+        memset(stats, 0, sizeof(*stats));
+    }
 }
 
 #if defined(BSP_SHARE_PREFS)
@@ -254,6 +263,67 @@ bool buddy_prefs_save_species(uint8_t species, void *context)
 #endif
 }
 
+bool buddy_prefs_load_stats(buddy_pet_stats_t *stats, void *context)
+{
+    int32_t len;
+
+    (void)context;
+
+    if (stats == NULL)
+    {
+        return false;
+    }
+    buddy_prefs_stats_defaults(stats);
+
+    if (!buddy_prefs_init())
+    {
+        return false;
+    }
+
+#if defined(BSP_SHARE_PREFS)
+    buddy_prefs_lock();
+    len = share_prefs_get_block(g_prefs, BUDDY_PREFS_KEY_STATS, stats, (int32_t)sizeof(*stats));
+    buddy_prefs_unlock();
+    if (len != (int32_t)sizeof(*stats))
+    {
+        buddy_prefs_stats_defaults(stats);
+    }
+    if (stats->velocity_index >= BUDDY_PREFS_STATS_VELOCITY_COUNT)
+    {
+        stats->velocity_index = 0;
+    }
+    if (stats->velocity_count > BUDDY_PREFS_STATS_VELOCITY_COUNT)
+    {
+        stats->velocity_count = BUDDY_PREFS_STATS_VELOCITY_COUNT;
+    }
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool buddy_prefs_save_stats(const buddy_pet_stats_t *stats, void *context)
+{
+    bool ok;
+
+    (void)context;
+
+    if (stats == NULL || !buddy_prefs_init())
+    {
+        return false;
+    }
+
+#if defined(BSP_SHARE_PREFS)
+    buddy_prefs_lock();
+    ok = share_prefs_set_block(g_prefs, BUDDY_PREFS_KEY_STATS, stats,
+                               (int32_t)sizeof(*stats)) == RT_EOK;
+    buddy_prefs_unlock();
+    return ok;
+#else
+    return false;
+#endif
+}
+
 bool buddy_prefs_load_ui_settings(buddy_ui_settings_t *settings)
 {
     if (settings == NULL || !buddy_prefs_init())
@@ -317,6 +387,7 @@ bool buddy_prefs_clear_all(void)
     ok = buddy_prefs_remove_ok(share_prefs_remove(g_prefs, BUDDY_PREFS_KEY_NAME));
     ok = buddy_prefs_remove_ok(share_prefs_remove(g_prefs, BUDDY_PREFS_KEY_OWNER)) && ok;
     ok = buddy_prefs_remove_ok(share_prefs_remove(g_prefs, BUDDY_PREFS_KEY_SPECIES)) && ok;
+    ok = buddy_prefs_remove_ok(share_prefs_remove(g_prefs, BUDDY_PREFS_KEY_STATS)) && ok;
     ok = buddy_prefs_remove_ok(share_prefs_remove(g_prefs, BUDDY_PREFS_KEY_BRIGHTNESS)) && ok;
     ok = buddy_prefs_remove_ok(share_prefs_remove(g_prefs, BUDDY_PREFS_KEY_SOUND)) && ok;
     ok = buddy_prefs_remove_ok(share_prefs_remove(g_prefs, BUDDY_PREFS_KEY_LED)) && ok;

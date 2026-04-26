@@ -37,7 +37,7 @@ void BuddyApp::on_ble_passkey(uint32_t passkey)
 
 bool BuddyApp::send_permission_once()
 {
-    return protocol_.send_permission_once();
+    return protocol_.send_permission_once(last_tick_ms_);
 }
 
 bool BuddyApp::send_permission_deny()
@@ -65,6 +65,11 @@ bool BuddyApp::factory_reset()
 bool BuddyApp::set_species(uint8_t species)
 {
     return protocol_.set_species(species);
+}
+
+bool BuddyApp::record_nap_end(uint32_t seconds)
+{
+    return protocol_.record_nap_end(seconds, last_tick_ms_);
 }
 
 void BuddyApp::tick(uint32_t now_ms)
@@ -142,6 +147,11 @@ uint8_t BuddyApp::current_species() const
 const BuddyProtocol::Snapshot &BuddyApp::snapshot() const
 {
     return protocol_.snapshot();
+}
+
+BuddyProtocol::PetStatsView BuddyApp::pet_stats_view() const
+{
+    return protocol_.pet_stats_view(last_tick_ms_);
 }
 
 void BuddyApp::on_json_line(const char *line, uint16_t len, void *context)

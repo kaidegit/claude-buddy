@@ -59,6 +59,7 @@
 typedef enum
 {
     BUDDY_UI_SCREEN_HOME = 0,
+    BUDDY_UI_SCREEN_PET,
     BUDDY_UI_SCREEN_INFO,
     BUDDY_UI_SCREEN_SETTINGS,
 } buddy_ui_screen_t;
@@ -66,6 +67,7 @@ typedef enum
 typedef enum
 {
     BUDDY_UI_VIEW_HOME = 0,
+    BUDDY_UI_VIEW_PET_STATS,
     BUDDY_UI_VIEW_APPROVAL,
     BUDDY_UI_VIEW_PAIRING,
     BUDDY_UI_VIEW_INFO,
@@ -109,6 +111,9 @@ static lv_obj_t *s_home_character_gif;
 static lv_obj_t *s_home_persona_label;
 static lv_obj_t *s_home_summary_label;
 static lv_obj_t *s_home_entries_label;
+
+static lv_obj_t *s_pet_page;
+static lv_obj_t *s_pet_stats_label;
 
 static lv_obj_t *s_approval_page;
 static lv_obj_t *s_approval_tool_label;
@@ -560,6 +565,8 @@ static const char *buddy_ui_screen_name(buddy_ui_view_t view)
 {
     switch (view)
     {
+    case BUDDY_UI_VIEW_PET_STATS:
+        return "Pet";
     case BUDDY_UI_VIEW_APPROVAL:
         return "Approval";
     case BUDDY_UI_VIEW_PAIRING:
@@ -654,6 +661,8 @@ static buddy_ui_view_t buddy_ui_effective_view(const buddy_ui_model_t *model)
 
     switch (s_screen)
     {
+    case BUDDY_UI_SCREEN_PET:
+        return BUDDY_UI_VIEW_PET_STATS;
     case BUDDY_UI_SCREEN_INFO:
         return BUDDY_UI_VIEW_INFO;
     case BUDDY_UI_SCREEN_SETTINGS:
@@ -669,6 +678,9 @@ static void buddy_ui_next_screen(void)
     switch (s_screen)
     {
     case BUDDY_UI_SCREEN_HOME:
+        s_screen = BUDDY_UI_SCREEN_PET;
+        break;
+    case BUDDY_UI_SCREEN_PET:
         s_screen = BUDDY_UI_SCREEN_INFO;
         break;
     case BUDDY_UI_SCREEN_INFO:
@@ -781,6 +793,10 @@ static bool buddy_ui_process_actions(const buddy_ui_model_t *model)
         if (s_screen == BUDDY_UI_SCREEN_INFO)
         {
             s_info_page_index = (uint8_t)((s_info_page_index + 1U) % 2U);
+        }
+        else if (s_screen == BUDDY_UI_SCREEN_PET)
+        {
+            s_transcript_page_index = 0;
         }
         else if (s_screen == BUDDY_UI_SCREEN_SETTINGS)
         {
@@ -1038,6 +1054,28 @@ static void buddy_ui_update_pairing(const buddy_ui_model_t *model)
     lv_label_set_text(s_pairing_hint_label, "DisplayOnly bonding passkey");
 }
 
+static void buddy_ui_update_pet_stats(const buddy_ui_model_t *model)
+{
+    char buffer[384];
+    const uint32_t nap = model->pet_nap_seconds;
+
+    snprintf(buffer, sizeof(buffer),
+             "mood    %u/4\nfed     %u/10\nenergy  %u/5\nlevel   %u\n\n"
+             "approved %u\ndenied   %u\nmedian   %us\nnapped   %luh%02lum\n"
+             "tokens   %lu",
+             (unsigned int)model->pet_mood,
+             (unsigned int)model->pet_fed,
+             (unsigned int)model->pet_energy,
+             (unsigned int)model->pet_level,
+             (unsigned int)model->pet_approvals,
+             (unsigned int)model->pet_denials,
+             (unsigned int)model->pet_velocity_seconds,
+             (unsigned long)(nap / 3600U),
+             (unsigned long)((nap / 60U) % 60U),
+             (unsigned long)model->pet_tokens);
+    lv_label_set_text(s_pet_stats_label, buffer);
+}
+
 static void buddy_ui_update_info(const buddy_ui_model_t *model)
 {
     char buffer[384];
@@ -1274,6 +1312,10 @@ static void buddy_ui_create_screen(void)
     s_home_entries_label = buddy_ui_label(s_home_page, BUDDY_UI_FONT_SMALL, lv_color_hex(0xB6BCC8));
     lv_obj_set_flex_grow(s_home_entries_label, 1);
 
+    s_pet_page = buddy_ui_page(screen);
+    s_pet_stats_label = buddy_ui_label(s_pet_page, BUDDY_UI_FONT_BODY, lv_color_hex(0xE1E6EF));
+    lv_obj_set_flex_grow(s_pet_stats_label, 1);
+
     s_approval_page = buddy_ui_page(screen);
     s_approval_tool_label = buddy_ui_label(s_approval_page, BUDDY_UI_FONT_TITLE, lv_color_hex(0xF3F6FA));
     s_approval_hint_label = buddy_ui_label(s_approval_page, BUDDY_UI_FONT_BODY, lv_color_hex(0xE1E6EF));
@@ -1343,6 +1385,7 @@ static void buddy_ui_show_view(buddy_ui_view_t view)
 {
     s_view = view;
     buddy_ui_set_hidden(s_home_page, view != BUDDY_UI_VIEW_HOME);
+    buddy_ui_set_hidden(s_pet_page, view != BUDDY_UI_VIEW_PET_STATS);
     buddy_ui_set_hidden(s_approval_page, view != BUDDY_UI_VIEW_APPROVAL);
     buddy_ui_set_hidden(s_pairing_page, view != BUDDY_UI_VIEW_PAIRING);
     buddy_ui_set_hidden(s_info_page, view != BUDDY_UI_VIEW_INFO);
@@ -1391,6 +1434,9 @@ static void buddy_ui_refresh(bool force)
     buddy_ui_update_common(&model, view);
     switch (view)
     {
+    case BUDDY_UI_VIEW_PET_STATS:
+        buddy_ui_update_pet_stats(&model);
+        break;
     case BUDDY_UI_VIEW_APPROVAL:
         buddy_ui_update_approval(&model);
         break;

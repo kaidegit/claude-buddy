@@ -36,6 +36,7 @@ public:
     bool delete_character();
     bool factory_reset();
     bool set_species(uint8_t species);
+    bool record_nap_end(uint32_t seconds);
     void tick(uint32_t now_ms);
 
     bool initialized() const;
@@ -49,6 +50,7 @@ public:
     const char *owner() const;
     uint8_t current_species() const;
     const BuddyProtocol::Snapshot &snapshot() const;
+    BuddyProtocol::PetStatsView pet_stats_view() const;
     BuddyProtocol::RuntimeStatus runtime_status() const;
 
 private:

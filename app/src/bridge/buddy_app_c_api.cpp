@@ -91,6 +91,57 @@ static bool buddy_app_platform_factory_reset(void *context)
     return ok;
 }
 
+static bool buddy_app_load_stats(buddy::BuddyProtocol::PetStats *stats, void *context)
+{
+    buddy_pet_stats_t stored;
+
+    (void)context;
+
+    if (stats == nullptr || !buddy_prefs_load_stats(&stored, nullptr))
+    {
+        return false;
+    }
+
+    stats->nap_seconds = stored.nap_seconds;
+    stats->approvals = stored.approvals;
+    stats->denials = stored.denials;
+    for (uint8_t i = 0; i < buddy::BuddyProtocol::kVelocitySampleCount; ++i)
+    {
+        stats->velocity[i] = stored.velocity[i];
+    }
+    stats->velocity_index = stored.velocity_index;
+    stats->velocity_count = stored.velocity_count;
+    stats->level = stored.level;
+    stats->tokens = stored.tokens;
+    return true;
+}
+
+static bool buddy_app_save_stats(const buddy::BuddyProtocol::PetStats *stats, void *context)
+{
+    buddy_pet_stats_t stored;
+
+    (void)context;
+
+    if (stats == nullptr)
+    {
+        return false;
+    }
+
+    memset(&stored, 0, sizeof(stored));
+    stored.nap_seconds = stats->nap_seconds;
+    stored.approvals = stats->approvals;
+    stored.denials = stats->denials;
+    for (uint8_t i = 0; i < buddy::BuddyProtocol::kVelocitySampleCount; ++i)
+    {
+        stored.velocity[i] = stats->velocity[i];
+    }
+    stored.velocity_index = stats->velocity_index;
+    stored.velocity_count = stats->velocity_count;
+    stored.level = stats->level;
+    stored.tokens = stats->tokens;
+    return buddy_prefs_save_stats(&stored, nullptr);
+}
+
 extern "C" void buddy_app_init(void)
 {
     buddy::BuddyPlatformHooks hooks;
@@ -103,6 +154,8 @@ extern "C" void buddy_app_init(void)
     hooks.prefs.save_identity = buddy_prefs_save_identity;
     hooks.prefs.load_species = buddy_prefs_load_species;
     hooks.prefs.save_species = buddy_prefs_save_species;
+    hooks.prefs.load_stats = buddy_app_load_stats;
+    hooks.prefs.save_stats = buddy_app_save_stats;
     hooks.prefs.context = nullptr;
     hooks.reset.delete_character = buddy_app_platform_delete_character;
     hooks.reset.factory_reset = buddy_app_platform_factory_reset;
@@ -160,6 +213,11 @@ extern "C" bool buddy_app_set_species(uint8_t species)
     return g_app.set_species(species);
 }
 
+extern "C" bool buddy_app_record_nap_end(uint32_t seconds)
+{
+    return g_app.record_nap_end(seconds);
+}
+
 extern "C" bool buddy_app_get_pairing_passkey(uint32_t *out_passkey)
 {
     if (out_passkey == nullptr || !g_app.has_pairing_passkey())
@@ -182,6 +240,7 @@ extern "C" bool buddy_app_get_ui_model(buddy_ui_model_t *out_model)
 
     const buddy::BuddyProtocol::RuntimeStatus status = g_app.runtime_status();
     const buddy::BuddyProtocol::Snapshot &snapshot = g_app.snapshot();
+    const buddy::BuddyProtocol::PetStatsView pet = g_app.pet_stats_view();
 
     out_model->connected = status.connected;
     out_model->encrypted = status.encrypted;
@@ -205,6 +264,15 @@ extern "C" bool buddy_app_get_ui_model(buddy_ui_model_t *out_model)
     out_model->rx_lines = status.rx_lines;
     out_model->rx_overflowed = status.rx_overflowed;
     out_model->pairing_passkey = g_app.last_pairing_passkey();
+    out_model->pet_nap_seconds = pet.nap_seconds;
+    out_model->pet_tokens = pet.tokens;
+    out_model->pet_approvals = pet.approvals;
+    out_model->pet_denials = pet.denials;
+    out_model->pet_velocity_seconds = pet.median_velocity;
+    out_model->pet_level = pet.level;
+    out_model->pet_mood = pet.mood;
+    out_model->pet_fed = pet.fed;
+    out_model->pet_energy = pet.energy;
     out_model->species = g_app.current_species();
     out_model->species_count = buddy::BuddyProtocol::kAsciiSpeciesCount;
     out_model->gif_species = buddy::BuddyProtocol::kGifSpeciesSentinel;

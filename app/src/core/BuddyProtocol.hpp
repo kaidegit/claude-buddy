@@ -20,6 +20,8 @@ public:
     static constexpr uint16_t kMaxDecodedChunkLength = 1536;
     static constexpr uint8_t kAsciiSpeciesCount = 18;
     static constexpr uint8_t kGifSpeciesSentinel = 0xFF;
+    static constexpr uint8_t kVelocitySampleCount = 8;
+    static constexpr uint32_t kTokensPerLevel = 50000U;
 
     struct RuntimeStatus {
         bool connected = false;
@@ -54,6 +56,29 @@ public:
         uint32_t last_sync_ms = 0;
     };
 
+    struct PetStats {
+        uint32_t nap_seconds = 0;
+        uint16_t approvals = 0;
+        uint16_t denials = 0;
+        uint16_t velocity[kVelocitySampleCount] = {};
+        uint8_t velocity_index = 0;
+        uint8_t velocity_count = 0;
+        uint8_t level = 0;
+        uint32_t tokens = 0;
+    };
+
+    struct PetStatsView {
+        uint32_t nap_seconds = 0;
+        uint16_t approvals = 0;
+        uint16_t denials = 0;
+        uint16_t median_velocity = 0;
+        uint8_t level = 0;
+        uint32_t tokens = 0;
+        uint8_t mood = 2;
+        uint8_t fed = 0;
+        uint8_t energy = 3;
+    };
+
     typedef int (*SendCallback)(const char *line, uint16_t len, void *context);
     typedef int (*UnpairCallback)(void *context);
     typedef bool (*LoadIdentityCallback)(char *name, uint16_t name_size, char *owner,
@@ -61,6 +86,8 @@ public:
     typedef bool (*SaveIdentityCallback)(const char *name, const char *owner, void *context);
     typedef bool (*LoadSpeciesCallback)(uint8_t *species, void *context);
     typedef bool (*SaveSpeciesCallback)(uint8_t species, void *context);
+    typedef bool (*LoadStatsCallback)(PetStats *stats, void *context);
+    typedef bool (*SaveStatsCallback)(const PetStats *stats, void *context);
     typedef bool (*DeleteCharacterCallback)(void *context);
     typedef bool (*FactoryResetCallback)(void *context);
     typedef bool (*CharacterBeginCallback)(const char *safe_name, uint32_t total_size,
@@ -96,6 +123,8 @@ public:
         SaveIdentityCallback save_identity = nullptr;
         LoadSpeciesCallback load_species = nullptr;
         SaveSpeciesCallback save_species = nullptr;
+        LoadStatsCallback load_stats = nullptr;
+        SaveStatsCallback save_stats = nullptr;
         void *context = nullptr;
     };
 
@@ -117,11 +146,12 @@ public:
     void set_hooks(const Hooks &hooks);
     void handle_line(const char *line, uint16_t len, const RuntimeStatus &status);
 
-    bool send_permission_once();
+    bool send_permission_once(uint32_t now_ms = 0);
     bool send_permission_deny();
     bool delete_character();
     bool factory_reset();
     bool set_species(uint8_t species);
+    bool record_nap_end(uint32_t seconds, uint32_t now_ms);
 
     const char *device_name() const;
     const char *owner() const;
@@ -129,6 +159,8 @@ public:
     uint8_t current_species() const;
     const Snapshot &snapshot() const;
     const TimeSync &time_sync() const;
+    const PetStats &pet_stats() const;
+    PetStatsView pet_stats_view(uint32_t now_ms) const;
 
 private:
     bool handle_command(void *json_root, const char *cmd, const RuntimeStatus &status);
@@ -141,6 +173,9 @@ private:
     bool handle_character_end(void *json_root);
     bool handle_species(void *json_root);
     bool parse_time_payload(void *json_root, const RuntimeStatus &status);
+    void update_bridge_tokens(uint32_t bridge_total);
+    void record_approval(uint32_t now_ms);
+    void record_denial();
     bool validate_character_manifest(const char *manifest, uint32_t manifest_len, char *display_name,
                                      uint16_t display_name_size);
     bool validate_manifest_state(void *states, const char *name);
@@ -152,11 +187,18 @@ private:
     bool emit_permission(const char *decision);
     void load_persisted_identity();
     void load_persisted_species();
+    void load_persisted_stats();
     bool save_identity() const;
     bool save_species() const;
+    bool save_stats() const;
     void reset_identity();
     void reset_species();
+    void reset_stats();
     bool is_valid_species(uint8_t species) const;
+    uint16_t stats_median_velocity() const;
+    uint8_t stats_mood_tier() const;
+    uint8_t stats_fed_progress() const;
+    uint8_t stats_energy_tier(uint32_t now_ms) const;
     bool storage_ready() const;
     void abort_character_transfer();
     void reset_character_transfer();
@@ -183,9 +225,14 @@ private:
     char owner_[32] = "";
     Snapshot snapshot_;
     TimeSync time_sync_;
+    PetStats pet_stats_;
     CharacterTransfer character_transfer_;
     uint8_t species_ = kGifSpeciesSentinel;
     bool permission_sent_ = false;
+    uint32_t last_bridge_tokens_ = 0;
+    bool tokens_synced_ = false;
+    uint32_t last_nap_end_ms_ = 0;
+    uint8_t energy_at_nap_ = 3;
 };
 
 }  // namespace buddy

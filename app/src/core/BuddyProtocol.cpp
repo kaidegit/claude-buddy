@@ -58,6 +58,17 @@ bool json_uint32_required(cJSON *root, const char *name, uint32_t *out)
     return true;
 }
 
+bool json_uint32_optional(cJSON *root, const char *name, uint32_t *out)
+{
+    cJSON *item = cJSON_GetObjectItemCaseSensitive(root, name);
+    if (item == nullptr)
+    {
+        return false;
+    }
+
+    return json_uint32_required(root, name, out);
+}
+
 bool ascii_is_alnum(char c)
 {
     return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
@@ -99,6 +110,13 @@ int base64_value(char c)
     return -1;
 }
 
+uint8_t level_from_tokens(uint32_t tokens)
+{
+    const uint32_t level = tokens / BuddyProtocol::kTokensPerLevel;
+
+    return static_cast<uint8_t>(level > 255U ? 255U : level);
+}
+
 const char *const kCharacterStates[] = {
     "sleep", "idle", "busy", "attention", "celebrate", "dizzy", "heart",
 };
@@ -110,6 +128,7 @@ void BuddyProtocol::set_hooks(const Hooks &hooks)
     hooks_ = hooks;
     load_persisted_identity();
     load_persisted_species();
+    load_persisted_stats();
 }
 
 void BuddyProtocol::handle_line(const char *line, uint16_t len, const RuntimeStatus &status)
@@ -147,14 +166,24 @@ void BuddyProtocol::handle_line(const char *line, uint16_t len, const RuntimeSta
     cJSON_Delete(root);
 }
 
-bool BuddyProtocol::send_permission_once()
+bool BuddyProtocol::send_permission_once(uint32_t now_ms)
 {
-    return emit_permission("once");
+    const bool sent = emit_permission("once");
+    if (sent)
+    {
+        record_approval(now_ms);
+    }
+    return sent;
 }
 
 bool BuddyProtocol::send_permission_deny()
 {
-    return emit_permission("deny");
+    const bool sent = emit_permission("deny");
+    if (sent)
+    {
+        record_denial();
+    }
+    return sent;
 }
 
 bool BuddyProtocol::delete_character()
@@ -183,6 +212,7 @@ bool BuddyProtocol::factory_reset()
     {
         reset_identity();
         reset_species();
+        reset_stats();
         snapshot_ = Snapshot();
         time_sync_ = TimeSync();
         permission_sent_ = false;
@@ -199,6 +229,21 @@ bool BuddyProtocol::set_species(uint8_t species)
 
     species_ = species;
     return save_species();
+}
+
+bool BuddyProtocol::record_nap_end(uint32_t seconds, uint32_t now_ms)
+{
+    if (4294967295U - pet_stats_.nap_seconds < seconds)
+    {
+        pet_stats_.nap_seconds = 4294967295U;
+    }
+    else
+    {
+        pet_stats_.nap_seconds += seconds;
+    }
+    last_nap_end_ms_ = now_ms;
+    energy_at_nap_ = 5;
+    return save_stats();
 }
 
 const char *BuddyProtocol::device_name() const
@@ -229,6 +274,27 @@ const BuddyProtocol::Snapshot &BuddyProtocol::snapshot() const
 const BuddyProtocol::TimeSync &BuddyProtocol::time_sync() const
 {
     return time_sync_;
+}
+
+const BuddyProtocol::PetStats &BuddyProtocol::pet_stats() const
+{
+    return pet_stats_;
+}
+
+BuddyProtocol::PetStatsView BuddyProtocol::pet_stats_view(uint32_t now_ms) const
+{
+    PetStatsView view;
+
+    view.nap_seconds = pet_stats_.nap_seconds;
+    view.approvals = pet_stats_.approvals;
+    view.denials = pet_stats_.denials;
+    view.median_velocity = stats_median_velocity();
+    view.level = pet_stats_.level;
+    view.tokens = pet_stats_.tokens;
+    view.mood = stats_mood_tier();
+    view.fed = stats_fed_progress();
+    view.energy = stats_energy_tier(now_ms);
+    return view;
 }
 
 bool BuddyProtocol::handle_command(void *json_root, const char *cmd, const RuntimeStatus &status)
@@ -336,6 +402,7 @@ bool BuddyProtocol::handle_snapshot(void *json_root, const RuntimeStatus &status
     const char *msg = json_string(root, "msg");
     const char *previous_prompt_id = snapshot_.prompt_id;
     char previous_prompt_id_copy[kPromptIdLength];
+    uint32_t bridge_tokens = 0;
 
     copy_string(previous_prompt_id_copy, sizeof(previous_prompt_id_copy), previous_prompt_id);
 
@@ -346,6 +413,10 @@ bool BuddyProtocol::handle_snapshot(void *json_root, const RuntimeStatus &status
     snapshot_.tokens_today = json_uint32(root, "tokens_today", 0);
     snapshot_.last_snapshot_ms = status.uptime_ms;
     copy_string(snapshot_.msg, sizeof(snapshot_.msg), msg);
+    if (json_uint32_optional(root, "tokens", &bridge_tokens))
+    {
+        update_bridge_tokens(bridge_tokens);
+    }
 
     snapshot_.entry_count = 0;
     for (uint8_t i = 0; i < kMaxSnapshotEntries; ++i)
@@ -701,6 +772,79 @@ bool BuddyProtocol::handle_species(void *json_root)
     return emit_simple_ack("species", true, nullptr);
 }
 
+void BuddyProtocol::update_bridge_tokens(uint32_t bridge_total)
+{
+    if (!tokens_synced_)
+    {
+        last_bridge_tokens_ = bridge_total;
+        tokens_synced_ = true;
+        return;
+    }
+
+    if (bridge_total < last_bridge_tokens_)
+    {
+        last_bridge_tokens_ = bridge_total;
+        return;
+    }
+
+    const uint32_t delta = bridge_total - last_bridge_tokens_;
+    last_bridge_tokens_ = bridge_total;
+    if (delta == 0)
+    {
+        return;
+    }
+
+    const uint8_t level_before = level_from_tokens(pet_stats_.tokens);
+    if (4294967295U - pet_stats_.tokens < delta)
+    {
+        pet_stats_.tokens = 4294967295U;
+    }
+    else
+    {
+        pet_stats_.tokens += delta;
+    }
+
+    const uint8_t level_after = level_from_tokens(pet_stats_.tokens);
+    if (level_after > level_before)
+    {
+        pet_stats_.level = level_after;
+        (void)save_stats();
+    }
+}
+
+void BuddyProtocol::record_approval(uint32_t now_ms)
+{
+    uint32_t seconds_to_respond = 0;
+
+    if (snapshot_.prompt_started_ms != 0 && now_ms >= snapshot_.prompt_started_ms)
+    {
+        seconds_to_respond = (now_ms - snapshot_.prompt_started_ms) / 1000U;
+    }
+
+    if (pet_stats_.approvals < 65535U)
+    {
+        ++pet_stats_.approvals;
+    }
+    pet_stats_.velocity[pet_stats_.velocity_index] =
+        static_cast<uint16_t>(seconds_to_respond > 65535U ? 65535U : seconds_to_respond);
+    pet_stats_.velocity_index =
+        static_cast<uint8_t>((pet_stats_.velocity_index + 1U) % kVelocitySampleCount);
+    if (pet_stats_.velocity_count < kVelocitySampleCount)
+    {
+        ++pet_stats_.velocity_count;
+    }
+    (void)save_stats();
+}
+
+void BuddyProtocol::record_denial()
+{
+    if (pet_stats_.denials < 65535U)
+    {
+        ++pet_stats_.denials;
+    }
+    (void)save_stats();
+}
+
 bool BuddyProtocol::validate_character_manifest(const char *manifest, uint32_t manifest_len,
                                                 char *display_name, uint16_t display_name_size)
 {
@@ -944,6 +1088,7 @@ bool BuddyProtocol::emit_status(const RuntimeStatus &status)
     cJSON *data = nullptr;
     cJSON *sys = nullptr;
     cJSON *stats = nullptr;
+    const PetStatsView pet = pet_stats_view(status.uptime_ms);
     bool sent = false;
 
     if (root == nullptr)
@@ -976,6 +1121,15 @@ bool BuddyProtocol::emit_status(const RuntimeStatus &status)
         {
             cJSON_AddNumberToObject(stats, "rx_lines", status.rx_lines);
             cJSON_AddNumberToObject(stats, "rx_overflowed", status.rx_overflowed);
+            cJSON_AddNumberToObject(stats, "appr", pet.approvals);
+            cJSON_AddNumberToObject(stats, "deny", pet.denials);
+            cJSON_AddNumberToObject(stats, "vel", pet.median_velocity);
+            cJSON_AddNumberToObject(stats, "nap", pet.nap_seconds);
+            cJSON_AddNumberToObject(stats, "lvl", pet.level);
+            cJSON_AddNumberToObject(stats, "tokens", pet.tokens);
+            cJSON_AddNumberToObject(stats, "mood", pet.mood);
+            cJSON_AddNumberToObject(stats, "fed", pet.fed);
+            cJSON_AddNumberToObject(stats, "energy", pet.energy);
         }
     }
 
@@ -1045,6 +1199,32 @@ void BuddyProtocol::load_persisted_species()
     species_ = species;
 }
 
+void BuddyProtocol::load_persisted_stats()
+{
+    PetStats stats;
+
+    if (hooks_.prefs.load_stats == nullptr ||
+        !hooks_.prefs.load_stats(&stats, hooks_.prefs.context))
+    {
+        return;
+    }
+
+    if (stats.velocity_index >= kVelocitySampleCount)
+    {
+        stats.velocity_index = 0;
+    }
+    if (stats.velocity_count > kVelocitySampleCount)
+    {
+        stats.velocity_count = kVelocitySampleCount;
+    }
+    if (stats.tokens == 0 && stats.level > 0)
+    {
+        stats.tokens = static_cast<uint32_t>(stats.level) * kTokensPerLevel;
+    }
+    stats.level = level_from_tokens(stats.tokens);
+    pet_stats_ = stats;
+}
+
 bool BuddyProtocol::save_identity() const
 {
     if (hooks_.prefs.save_identity == nullptr)
@@ -1065,6 +1245,16 @@ bool BuddyProtocol::save_species() const
     return hooks_.prefs.save_species(species_, hooks_.prefs.context);
 }
 
+bool BuddyProtocol::save_stats() const
+{
+    if (hooks_.prefs.save_stats == nullptr)
+    {
+        return true;
+    }
+
+    return hooks_.prefs.save_stats(&pet_stats_, hooks_.prefs.context);
+}
+
 void BuddyProtocol::reset_identity()
 {
     copy_string(device_name_, sizeof(device_name_), "Claude Buddy");
@@ -1076,9 +1266,121 @@ void BuddyProtocol::reset_species()
     species_ = kGifSpeciesSentinel;
 }
 
+void BuddyProtocol::reset_stats()
+{
+    pet_stats_ = PetStats();
+    last_bridge_tokens_ = 0;
+    tokens_synced_ = false;
+    last_nap_end_ms_ = 0;
+    energy_at_nap_ = 3;
+}
+
 bool BuddyProtocol::is_valid_species(uint8_t species) const
 {
     return species == kGifSpeciesSentinel || species < kAsciiSpeciesCount;
+}
+
+uint16_t BuddyProtocol::stats_median_velocity() const
+{
+    if (pet_stats_.velocity_count == 0)
+    {
+        return 0;
+    }
+
+    uint16_t sorted[kVelocitySampleCount];
+    const uint8_t count = pet_stats_.velocity_count > kVelocitySampleCount ?
+                              kVelocitySampleCount :
+                              pet_stats_.velocity_count;
+
+    for (uint8_t i = 0; i < count; ++i)
+    {
+        sorted[i] = pet_stats_.velocity[i];
+    }
+
+    for (uint8_t i = 1; i < count; ++i)
+    {
+        const uint16_t value = sorted[i];
+        int8_t j = static_cast<int8_t>(i) - 1;
+        while (j >= 0 && sorted[j] > value)
+        {
+            sorted[j + 1] = sorted[j];
+            --j;
+        }
+        sorted[j + 1] = value;
+    }
+
+    return sorted[count / 2U];
+}
+
+uint8_t BuddyProtocol::stats_mood_tier() const
+{
+    const uint16_t velocity = stats_median_velocity();
+    int8_t tier;
+
+    if (velocity == 0)
+    {
+        tier = 2;
+    }
+    else if (velocity < 15U)
+    {
+        tier = 4;
+    }
+    else if (velocity < 30U)
+    {
+        tier = 3;
+    }
+    else if (velocity < 60U)
+    {
+        tier = 2;
+    }
+    else if (velocity < 120U)
+    {
+        tier = 1;
+    }
+    else
+    {
+        tier = 0;
+    }
+
+    if (pet_stats_.approvals + pet_stats_.denials >= 3U)
+    {
+        if (pet_stats_.denials > pet_stats_.approvals)
+        {
+            tier -= 2;
+        }
+        else if (pet_stats_.denials * 2U > pet_stats_.approvals)
+        {
+            tier -= 1;
+        }
+    }
+
+    if (tier < 0)
+    {
+        tier = 0;
+    }
+    return static_cast<uint8_t>(tier);
+}
+
+uint8_t BuddyProtocol::stats_fed_progress() const
+{
+    return static_cast<uint8_t>((pet_stats_.tokens % kTokensPerLevel) / (kTokensPerLevel / 10U));
+}
+
+uint8_t BuddyProtocol::stats_energy_tier(uint32_t now_ms) const
+{
+    uint32_t hours_since = 0;
+    uint32_t drained;
+
+    if (now_ms >= last_nap_end_ms_)
+    {
+        hours_since = (now_ms - last_nap_end_ms_) / 3600000U;
+    }
+    drained = hours_since / 2U;
+    if (drained >= energy_at_nap_)
+    {
+        return 0;
+    }
+    return static_cast<uint8_t>(energy_at_nap_ - drained);
 }
 
 bool BuddyProtocol::storage_ready() const
