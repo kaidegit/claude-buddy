@@ -55,6 +55,8 @@
 #define BUDDY_UI_FONT_BODY buddy_ui_font_body()
 #define BUDDY_UI_FONT_SMALL buddy_ui_font_small()
 #define BUDDY_UI_FONT_ASCII buddy_ui_font_ascii()
+#define BUDDY_UI_PET_METER_WIDTH 172
+#define BUDDY_UI_PET_STATS_WIDTH 250
 
 typedef enum
 {
@@ -120,10 +122,7 @@ static lv_obj_t *s_pet_level_label;
 static lv_obj_t *s_pet_mood_cells[4];
 static lv_obj_t *s_pet_fed_cells[10];
 static lv_obj_t *s_pet_energy_cells[5];
-static lv_obj_t *s_pet_approvals_label;
-static lv_obj_t *s_pet_denials_label;
-static lv_obj_t *s_pet_nap_label;
-static lv_obj_t *s_pet_tokens_label;
+static lv_obj_t *s_pet_stats_label;
 
 static lv_obj_t *s_approval_page;
 static lv_obj_t *s_approval_tool_label;
@@ -251,6 +250,20 @@ static lv_coord_t buddy_ui_ascii_label_height(const lv_font_t *font)
     }
 
     return (lv_coord_t)((line_height * BUDDY_ASCII_ROWS) + (short_side <= 390 ? 4 : 8));
+}
+
+static lv_coord_t buddy_ui_pet_ascii_label_height(const lv_font_t *font)
+{
+    lv_coord_t line_height = font != NULL ? (lv_coord_t)lv_font_get_line_height(font) : 0;
+    const lv_coord_t height = buddy_ui_ascii_label_height(font);
+    const lv_coord_t short_side = buddy_ui_short_side();
+
+    if (line_height <= 0)
+    {
+        line_height = short_side <= 390 ? 8 : 16;
+    }
+
+    return height > line_height * 2 ? (lv_coord_t)(height - line_height * 2) : height;
 }
 
 static void buddy_ui_reset_settings_to_defaults(void)
@@ -469,7 +482,7 @@ static lv_obj_t *buddy_ui_pet_row(lv_obj_t *parent)
 {
     lv_obj_t *row = lv_obj_create(parent);
 
-    lv_obj_set_width(row, lv_pct(100));
+    lv_obj_set_width(row, BUDDY_UI_PET_METER_WIDTH);
     lv_obj_set_height(row, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -486,6 +499,7 @@ static lv_obj_t *buddy_ui_pet_metric_label(lv_obj_t *parent, const char *text)
 
     lv_obj_set_width(label, 52);
     lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_RIGHT, 0);
     lv_label_set_text(label, text);
     return label;
 }
@@ -500,6 +514,46 @@ static lv_obj_t *buddy_ui_pet_value_label(lv_obj_t *parent, lv_color_t color)
     lv_obj_set_style_text_color(label, color, 0);
     lv_obj_set_style_text_letter_space(label, 0, 0);
     return label;
+}
+
+static void buddy_ui_format_compact_count(char *out, size_t out_size, uint32_t value)
+{
+    if (value >= 1000000000U)
+    {
+        snprintf(out, out_size, "%luG", (unsigned long)(value / 1000000000U));
+    }
+    else if (value >= 1000000U)
+    {
+        snprintf(out, out_size, "%luM", (unsigned long)(value / 1000000U));
+    }
+    else if (value >= 10000U)
+    {
+        snprintf(out, out_size, "%luk", (unsigned long)(value / 1000U));
+    }
+    else
+    {
+        snprintf(out, out_size, "%lu", (unsigned long)value);
+    }
+}
+
+static void buddy_ui_format_compact_duration(char *out, size_t out_size, uint32_t seconds)
+{
+    const uint32_t minutes = seconds / 60U;
+    const uint32_t hours = minutes / 60U;
+
+    if (minutes < 60U)
+    {
+        snprintf(out, out_size, "%lum", (unsigned long)minutes);
+    }
+    else if (hours < 100U)
+    {
+        snprintf(out, out_size, "%luh%02lu", (unsigned long)hours,
+                 (unsigned long)(minutes % 60U));
+    }
+    else
+    {
+        snprintf(out, out_size, "%luh", (unsigned long)hours);
+    }
 }
 
 static lv_obj_t *buddy_ui_pet_cell(lv_obj_t *parent, lv_coord_t width, lv_coord_t height,
@@ -1135,7 +1189,10 @@ static void buddy_ui_update_pet_stats(const buddy_ui_model_t *model, uint32_t no
 {
     buddy_ascii_frame_t frame;
     char buffer[96];
-    const uint32_t nap = model->pet_nap_seconds;
+    char approvals[8];
+    char denials[8];
+    char nap[12];
+    char tokens[12];
     const uint8_t species = buddy_ui_effective_ascii_species(model);
     lv_color_t body_color = lv_color_hex(0x72D6FF);
     lv_color_t mood_color;
@@ -1192,16 +1249,13 @@ static void buddy_ui_update_pet_stats(const buddy_ui_model_t *model, uint32_t no
     snprintf(buffer, sizeof(buffer), "Lv %u", (unsigned int)model->pet_level);
     lv_label_set_text(s_pet_level_label, buffer);
 
-    snprintf(buffer, sizeof(buffer), "ok %u", (unsigned int)model->pet_approvals);
-    lv_label_set_text(s_pet_approvals_label, buffer);
-    snprintf(buffer, sizeof(buffer), "no %u", (unsigned int)model->pet_denials);
-    lv_label_set_text(s_pet_denials_label, buffer);
-    snprintf(buffer, sizeof(buffer), "nap %luh%02lum",
-             (unsigned long)(nap / 3600U),
-             (unsigned long)((nap / 60U) % 60U));
-    lv_label_set_text(s_pet_nap_label, buffer);
-    snprintf(buffer, sizeof(buffer), "tok %lu", (unsigned long)model->pet_tokens);
-    lv_label_set_text(s_pet_tokens_label, buffer);
+    buddy_ui_format_compact_count(approvals, sizeof(approvals), model->pet_approvals);
+    buddy_ui_format_compact_count(denials, sizeof(denials), model->pet_denials);
+    buddy_ui_format_compact_duration(nap, sizeof(nap), model->pet_nap_seconds);
+    buddy_ui_format_compact_count(tokens, sizeof(tokens), model->pet_tokens);
+    snprintf(buffer, sizeof(buffer), "ok %s  no %s  nap %s  tok %s",
+             approvals, denials, nap, tokens);
+    lv_label_set_text(s_pet_stats_label, buffer);
 }
 
 static void buddy_ui_update_info(const buddy_ui_model_t *model)
@@ -1443,12 +1497,14 @@ static void buddy_ui_create_screen(void)
 
     s_pet_page = buddy_ui_page(screen);
     lv_obj_set_style_pad_row(s_pet_page, metrics.space_sm, 0);
+    lv_obj_set_flex_align(s_pet_page, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_clear_flag(s_pet_page, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scrollbar_mode(s_pet_page, LV_SCROLLBAR_MODE_OFF);
 
     s_pet_character_label = buddy_ui_label(s_pet_page, BUDDY_UI_FONT_ASCII, lv_color_hex(0x72D6FF));
     lv_obj_set_width(s_pet_character_label, lv_pct(100));
-    lv_obj_set_height(s_pet_character_label, buddy_ui_ascii_label_height(BUDDY_UI_FONT_ASCII));
+    lv_obj_set_height(s_pet_character_label, buddy_ui_pet_ascii_label_height(BUDDY_UI_FONT_ASCII));
     lv_label_set_long_mode(s_pet_character_label, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(s_pet_character_label, LV_TEXT_ALIGN_CENTER, 0);
 
@@ -1492,14 +1548,12 @@ static void buddy_ui_create_screen(void)
     lv_obj_center(s_pet_level_label);
 
     row = buddy_ui_pet_row(s_pet_page);
-    lv_obj_set_style_pad_column(row, metrics.space_md, 0);
-    s_pet_approvals_label = buddy_ui_pet_value_label(row, lv_color_hex(0xE1E6EF));
-    s_pet_denials_label = buddy_ui_pet_value_label(row, lv_color_hex(0xE1E6EF));
-
-    row = buddy_ui_pet_row(s_pet_page);
-    lv_obj_set_style_pad_column(row, metrics.space_md, 0);
-    s_pet_nap_label = buddy_ui_pet_value_label(row, lv_color_hex(0xB6BCC8));
-    s_pet_tokens_label = buddy_ui_pet_value_label(row, lv_color_hex(0xB6BCC8));
+    lv_obj_set_width(row, BUDDY_UI_PET_STATS_WIDTH);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    s_pet_stats_label = buddy_ui_pet_value_label(row, lv_color_hex(0xE1E6EF));
+    lv_obj_set_width(s_pet_stats_label, lv_pct(100));
+    lv_label_set_long_mode(s_pet_stats_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(s_pet_stats_label, LV_TEXT_ALIGN_CENTER, 0);
 
     s_approval_page = buddy_ui_page(screen);
     s_approval_tool_label = buddy_ui_label(s_approval_page, BUDDY_UI_FONT_TITLE, lv_color_hex(0xF3F6FA));
