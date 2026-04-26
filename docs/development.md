@@ -13,6 +13,8 @@ same commands are used locally and in GitHub Actions.
 |   |-- project/               # SCons project, board config, linker and ptab
 |   `-- src/                   # Buddy firmware source
 |-- docs/                      # public project documentation
+|-- third_party/               # external simulator/template submodules
+|-- tools/lvgl_pc_sim/         # PC LVGL/SDL simulator overlay
 `-- tests/host/                # portable protocol/core tests
 ```
 
@@ -44,6 +46,48 @@ the board:
 
 Run these before changing `app/src/core`, `app/src/bridge`, or protocol-facing
 storage hooks.
+
+## LVGL PC Simulator
+
+The PC simulator previews the current LVGL v8 UI at `390x450` without flashing
+the board. It links the production UI source with mock `buddy_ui_model_t` data,
+the built-in ASCII character renderer, and the `lv_port_pc_vscode` SDL driver.
+Runtime GIFs, BLE, board storage, and the SiFli LCD path are intentionally not
+simulated in the first version.
+
+Install SDL2 and CMake first:
+
+```bash
+brew install sdl2 cmake
+```
+
+On Debian/Ubuntu:
+
+```bash
+sudo apt install build-essential cmake libsdl2-dev
+```
+
+Make sure nested simulator submodules are present:
+
+```bash
+git submodule update --init --recursive third_party/lv_port_pc_vscode
+```
+
+Build and run from the repository root:
+
+```bash
+cmake -S tools/lvgl_pc_sim -B build/lvgl_pc_sim
+cmake --build build/lvgl_pc_sim -j2
+build/lvgl_pc_sim/buddy_lvgl_pc_sim
+```
+
+Keyboard controls:
+
+- `1`, `Enter`, or Right Arrow: primary action.
+- `2`, `Space`, or Left Arrow: secondary action.
+- `M` or `Tab`: jump to settings.
+- `N` / `B`: next / previous mock scene.
+- `Q` or `Esc`: quit.
 
 ## Firmware Build
 

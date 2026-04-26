@@ -23,6 +23,7 @@ This is an experimental embedded port, not an official Anthropic product.
 - status, identity, time sync, permission, reset, species, and character package
   protocol handling
 - LVGL v8 UI for the 390x450 Huangshan Pi display
+- PC LVGL/SDL simulator for quick UI layout previews
 - staged LittleFS runtime character storage with manifest validation
 - host-side tests for portable core and protocol behavior
 - GitHub Actions firmware build using the same commands documented below
@@ -45,6 +46,8 @@ This is an experimental embedded port, not an official Anthropic product.
 |   |-- project/        # SCons project, board config, linker script, ptab
 |   `-- src/            # firmware source
 |-- docs/               # public documentation
+|-- tools/lvgl_pc_sim/  # PC LVGL/SDL UI simulator overlay
+|-- third_party/        # external simulator/template submodules
 |-- tests/host/         # host tests for portable modules
 `-- .github/workflows/  # CI build
 ```
