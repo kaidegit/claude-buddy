@@ -24,9 +24,10 @@ jobs:
       - name: Install SiFli SDK profile and build HCPU firmware
         shell: bash
         run: |
-          ./SiFli-SDK/install.sh
-          cd app/project
-          source ../../SiFli-SDK/export.sh
+          cd SiFli-SDK
+          ./install.sh
+          . ./export.sh
+          cd ../app/project
           scons --board=sf32lb52-lchspi-ulp -j2
 
       - name: Run host tests
