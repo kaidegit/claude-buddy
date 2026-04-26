@@ -23,6 +23,8 @@
 #define BUDDY_UI_MAX_WAIT_WARNING_S 30U
 #define BUDDY_UI_SETTINGS_COUNT 6U
 #define BUDDY_UI_DEFAULT_BRIGHTNESS 80U
+#define BUDDY_UI_PAGE_ANIM_MS 180U
+#define BUDDY_UI_PAGE_ANIM_OFFSET 36
 
 #if LV_FONT_MONTSERRAT_36
 #define BUDDY_UI_BUILTIN_FONT_HERO (&lv_font_montserrat_36)
@@ -105,6 +107,7 @@ static lv_obj_t *s_header_row;
 static lv_obj_t *s_title_label;
 static lv_obj_t *s_page_label;
 static lv_obj_t *s_nav_label;
+static lv_obj_t *s_page_stack;
 
 static lv_obj_t *s_home_page;
 static lv_obj_t *s_home_status_row;
@@ -161,6 +164,7 @@ static bool s_sound_enabled = true;
 static bool s_led_enabled = true;
 static bool s_transcript_enabled = true;
 static bool s_reset_armed;
+static lv_obj_t *s_anim_old_page;
 static uint8_t s_settings_index;
 static uint8_t s_info_page_index;
 static uint8_t s_transcript_page_index;
@@ -435,6 +439,7 @@ static lv_obj_t *buddy_ui_page(lv_obj_t *parent)
     lv_obj_t *page = lv_obj_create(parent);
 
     lv_obj_set_width(page, lv_pct(100));
+    lv_obj_set_height(page, lv_pct(100));
     lv_obj_set_flex_grow(page, 1);
     lv_obj_set_flex_flow(page, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_scrollbar_mode(page, LV_SCROLLBAR_MODE_AUTO);
@@ -492,6 +497,125 @@ static void buddy_ui_set_hidden(lv_obj_t *obj, bool hidden)
     else
     {
         lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static lv_obj_t *buddy_ui_page_for_view(buddy_ui_view_t view)
+{
+    switch (view)
+    {
+    case BUDDY_UI_VIEW_PET_STATS:
+        return s_pet_page;
+    case BUDDY_UI_VIEW_APPROVAL:
+        return s_approval_page;
+    case BUDDY_UI_VIEW_PAIRING:
+        return s_pairing_page;
+    case BUDDY_UI_VIEW_INFO:
+        return s_info_page;
+    case BUDDY_UI_VIEW_SETTINGS:
+        return s_settings_page;
+    case BUDDY_UI_VIEW_HOME:
+    default:
+        return s_home_page;
+    }
+}
+
+static uint8_t buddy_ui_view_order(buddy_ui_view_t view)
+{
+    switch (view)
+    {
+    case BUDDY_UI_VIEW_HOME:
+        return 0;
+    case BUDDY_UI_VIEW_PET_STATS:
+        return 1;
+    case BUDDY_UI_VIEW_INFO:
+        return 2;
+    case BUDDY_UI_VIEW_SETTINGS:
+        return 3;
+    case BUDDY_UI_VIEW_APPROVAL:
+    case BUDDY_UI_VIEW_PAIRING:
+    default:
+        return 0;
+    }
+}
+
+static bool buddy_ui_view_uses_fade(buddy_ui_view_t view)
+{
+    return view == BUDDY_UI_VIEW_APPROVAL || view == BUDDY_UI_VIEW_PAIRING;
+}
+
+static void buddy_ui_anim_set_x(void *obj, int32_t value)
+{
+    lv_obj_set_x((lv_obj_t *)obj, (lv_coord_t)value);
+}
+
+static void buddy_ui_anim_set_opa(void *obj, int32_t value)
+{
+    lv_obj_set_style_opa((lv_obj_t *)obj, (lv_opa_t)value, 0);
+}
+
+static void buddy_ui_page_anim_ready(lv_anim_t *anim)
+{
+    lv_obj_t *new_page = (lv_obj_t *)anim->var;
+
+    if (s_anim_old_page != NULL && s_anim_old_page != new_page)
+    {
+        buddy_ui_set_hidden(s_anim_old_page, true);
+        lv_obj_set_x(s_anim_old_page, 0);
+        lv_obj_set_style_opa(s_anim_old_page, LV_OPA_COVER, 0);
+    }
+
+    if (new_page != NULL)
+    {
+        lv_obj_set_x(new_page, 0);
+        lv_obj_set_style_opa(new_page, LV_OPA_COVER, 0);
+    }
+    s_anim_old_page = NULL;
+}
+
+static void buddy_ui_start_page_anim(lv_obj_t *page,
+                                     lv_coord_t from_x,
+                                     lv_coord_t to_x,
+                                     lv_opa_t from_opa,
+                                     lv_opa_t to_opa,
+                                     bool hide_when_done,
+                                     bool notify_when_done)
+{
+    lv_anim_t anim;
+
+    if (page == NULL)
+    {
+        return;
+    }
+
+    lv_anim_del(page, NULL);
+    buddy_ui_set_hidden(page, false);
+    lv_obj_set_x(page, from_x);
+    lv_obj_set_style_opa(page, from_opa, 0);
+
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, page);
+    lv_anim_set_time(&anim, BUDDY_UI_PAGE_ANIM_MS);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&anim, buddy_ui_anim_set_x);
+    lv_anim_set_values(&anim, from_x, to_x);
+    lv_anim_start(&anim);
+
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, page);
+    lv_anim_set_time(&anim, BUDDY_UI_PAGE_ANIM_MS);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&anim, buddy_ui_anim_set_opa);
+    lv_anim_set_values(&anim, from_opa, to_opa);
+    if (notify_when_done)
+    {
+        lv_anim_set_ready_cb(&anim, buddy_ui_page_anim_ready);
+    }
+    lv_anim_start(&anim);
+
+    if (hide_when_done)
+    {
+        s_anim_old_page = page;
     }
 }
 
@@ -1478,7 +1602,16 @@ static void buddy_ui_create_screen(void)
     lv_obj_set_width(s_page_label, LV_SIZE_CONTENT);
     lv_label_set_long_mode(s_page_label, LV_LABEL_LONG_CLIP);
 
-    s_home_page = buddy_ui_page(screen);
+    s_page_stack = lv_obj_create(screen);
+    lv_obj_set_width(s_page_stack, lv_pct(100));
+    lv_obj_set_flex_grow(s_page_stack, 1);
+    lv_obj_set_style_bg_opa(s_page_stack, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(s_page_stack, 0, 0);
+    lv_obj_set_style_pad_all(s_page_stack, 0, 0);
+    lv_obj_clear_flag(s_page_stack, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollbar_mode(s_page_stack, LV_SCROLLBAR_MODE_OFF);
+
+    s_home_page = buddy_ui_page(s_page_stack);
     lv_obj_set_style_pad_row(s_home_page, metrics.space_sm, 0);
     s_home_status_row = lv_obj_create(s_home_page);
     lv_obj_set_width(s_home_status_row, lv_pct(100));
@@ -1512,7 +1645,7 @@ static void buddy_ui_create_screen(void)
     s_home_entries_label = buddy_ui_label(s_home_page, BUDDY_UI_FONT_SMALL, lv_color_hex(0xB6BCC8));
     lv_obj_set_flex_grow(s_home_entries_label, 1);
 
-    s_pet_page = buddy_ui_page(screen);
+    s_pet_page = buddy_ui_page(s_page_stack);
     lv_obj_set_style_pad_row(s_pet_page, metrics.space_sm, 0);
     lv_obj_set_flex_align(s_pet_page, LV_FLEX_ALIGN_START,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -1572,7 +1705,7 @@ static void buddy_ui_create_screen(void)
     lv_label_set_long_mode(s_pet_stats_label, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(s_pet_stats_label, LV_TEXT_ALIGN_CENTER, 0);
 
-    s_approval_page = buddy_ui_page(screen);
+    s_approval_page = buddy_ui_page(s_page_stack);
     s_approval_tool_label = buddy_ui_label(s_approval_page, BUDDY_UI_FONT_TITLE, lv_color_hex(0xF3F6FA));
     s_approval_hint_label = buddy_ui_label(s_approval_page, BUDDY_UI_FONT_BODY, lv_color_hex(0xE1E6EF));
     s_approval_wait_label = buddy_ui_label(s_approval_page, BUDDY_UI_FONT_BODY, lv_color_hex(0xFFB454));
@@ -1588,16 +1721,16 @@ static void buddy_ui_create_screen(void)
     buddy_ui_button(button_row, "Approve", lv_color_hex(0x2F9E6D), BUDDY_UI_ACTION_APPROVE);
     buddy_ui_button(button_row, "Deny", lv_color_hex(0x9E3A35), BUDDY_UI_ACTION_DENY);
 
-    s_pairing_page = buddy_ui_page(screen);
+    s_pairing_page = buddy_ui_page(s_page_stack);
     s_pairing_passkey_label = buddy_ui_label(s_pairing_page, BUDDY_UI_FONT_HERO, lv_color_hex(0xF3F6FA));
     lv_obj_set_style_text_align(s_pairing_passkey_label, LV_TEXT_ALIGN_CENTER, 0);
     s_pairing_hint_label = buddy_ui_label(s_pairing_page, BUDDY_UI_FONT_BODY, lv_color_hex(0xB6BCC8));
     lv_obj_set_style_text_align(s_pairing_hint_label, LV_TEXT_ALIGN_CENTER, 0);
 
-    s_info_page = buddy_ui_page(screen);
+    s_info_page = buddy_ui_page(s_page_stack);
     s_info_label = buddy_ui_label(s_info_page, BUDDY_UI_FONT_BODY, lv_color_hex(0xE1E6EF));
 
-    s_settings_page = buddy_ui_page(screen);
+    s_settings_page = buddy_ui_page(s_page_stack);
     row = buddy_ui_settings_row(s_settings_page, "");
     s_settings_brightness_label = lv_obj_get_child(row, 0);
     s_settings_brightness_bar = lv_bar_create(row);
@@ -1639,13 +1772,46 @@ static void buddy_ui_create_screen(void)
 
 static void buddy_ui_show_view(buddy_ui_view_t view)
 {
+    lv_obj_t *old_page = buddy_ui_page_for_view(s_view);
+    lv_obj_t *new_page = buddy_ui_page_for_view(view);
+    bool fade = buddy_ui_view_uses_fade(view) || buddy_ui_view_uses_fade(s_view);
+    lv_coord_t offset = buddy_ui_view_order(view) >= buddy_ui_view_order(s_view) ?
+                            BUDDY_UI_PAGE_ANIM_OFFSET : -BUDDY_UI_PAGE_ANIM_OFFSET;
+
+    if (old_page == new_page)
+    {
+        s_view = view;
+        buddy_ui_set_hidden(s_home_page, new_page != s_home_page);
+        buddy_ui_set_hidden(s_pet_page, new_page != s_pet_page);
+        buddy_ui_set_hidden(s_approval_page, new_page != s_approval_page);
+        buddy_ui_set_hidden(s_pairing_page, new_page != s_pairing_page);
+        buddy_ui_set_hidden(s_info_page, new_page != s_info_page);
+        buddy_ui_set_hidden(s_settings_page, new_page != s_settings_page);
+        buddy_ui_set_hidden(new_page, false);
+        lv_obj_set_x(new_page, 0);
+        lv_obj_set_style_opa(new_page, LV_OPA_COVER, 0);
+        return;
+    }
+
     s_view = view;
-    buddy_ui_set_hidden(s_home_page, view != BUDDY_UI_VIEW_HOME);
-    buddy_ui_set_hidden(s_pet_page, view != BUDDY_UI_VIEW_PET_STATS);
-    buddy_ui_set_hidden(s_approval_page, view != BUDDY_UI_VIEW_APPROVAL);
-    buddy_ui_set_hidden(s_pairing_page, view != BUDDY_UI_VIEW_PAIRING);
-    buddy_ui_set_hidden(s_info_page, view != BUDDY_UI_VIEW_INFO);
-    buddy_ui_set_hidden(s_settings_page, view != BUDDY_UI_VIEW_SETTINGS);
+    buddy_ui_set_hidden(s_home_page, s_home_page != old_page && s_home_page != new_page);
+    buddy_ui_set_hidden(s_pet_page, s_pet_page != old_page && s_pet_page != new_page);
+    buddy_ui_set_hidden(s_approval_page, s_approval_page != old_page && s_approval_page != new_page);
+    buddy_ui_set_hidden(s_pairing_page, s_pairing_page != old_page && s_pairing_page != new_page);
+    buddy_ui_set_hidden(s_info_page, s_info_page != old_page && s_info_page != new_page);
+    buddy_ui_set_hidden(s_settings_page, s_settings_page != old_page && s_settings_page != new_page);
+    lv_obj_move_foreground(new_page);
+
+    if (fade)
+    {
+        buddy_ui_start_page_anim(old_page, 0, 0, LV_OPA_COVER, LV_OPA_TRANSP, true, false);
+        buddy_ui_start_page_anim(new_page, 0, 0, LV_OPA_TRANSP, LV_OPA_COVER, false, true);
+    }
+    else
+    {
+        buddy_ui_start_page_anim(old_page, 0, (lv_coord_t)-offset, LV_OPA_COVER, LV_OPA_TRANSP, true, false);
+        buddy_ui_start_page_anim(new_page, offset, 0, LV_OPA_TRANSP, LV_OPA_COVER, false, true);
+    }
 }
 
 static void buddy_ui_refresh(bool force)
