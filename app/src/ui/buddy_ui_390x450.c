@@ -115,7 +115,6 @@ static lv_obj_t *s_home_entries_label;
 static lv_obj_t *s_pet_page;
 static lv_obj_t *s_pet_character_label;
 static lv_obj_t *s_pet_name_label;
-static lv_obj_t *s_pet_page_count_label;
 static lv_obj_t *s_pet_level_badge;
 static lv_obj_t *s_pet_level_label;
 static lv_obj_t *s_pet_mood_cells[4];
@@ -123,10 +122,8 @@ static lv_obj_t *s_pet_fed_cells[10];
 static lv_obj_t *s_pet_energy_cells[5];
 static lv_obj_t *s_pet_approvals_label;
 static lv_obj_t *s_pet_denials_label;
-static lv_obj_t *s_pet_median_label;
 static lv_obj_t *s_pet_nap_label;
 static lv_obj_t *s_pet_tokens_label;
-static lv_obj_t *s_pet_today_label;
 
 static lv_obj_t *s_approval_page;
 static lv_obj_t *s_approval_tool_label;
@@ -487,9 +484,21 @@ static lv_obj_t *buddy_ui_pet_metric_label(lv_obj_t *parent, const char *text)
 {
     lv_obj_t *label = buddy_ui_label(parent, BUDDY_UI_FONT_SMALL, lv_color_hex(0xB6BCC8));
 
-    lv_obj_set_width(label, 64);
+    lv_obj_set_width(label, 52);
     lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
     lv_label_set_text(label, text);
+    return label;
+}
+
+static lv_obj_t *buddy_ui_pet_value_label(lv_obj_t *parent, lv_color_t color)
+{
+    lv_obj_t *label = lv_label_create(parent);
+
+    lv_obj_set_width(label, LV_SIZE_CONTENT);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+    lv_obj_set_style_text_font(label, BUDDY_UI_FONT_SMALL, 0);
+    lv_obj_set_style_text_color(label, color, 0);
+    lv_obj_set_style_text_letter_space(label, 0, 0);
     return label;
 }
 
@@ -1144,17 +1153,18 @@ static void buddy_ui_update_pet_stats(const buddy_ui_model_t *model, uint32_t no
         lv_obj_set_style_text_color(s_pet_character_label, buddy_ui_persona_color(model->persona), 0);
     }
 
-    lv_label_set_text(s_pet_name_label,
-                      model->device_name[0] != '\0' ? model->device_name : "Buddy");
     if (buddy_ui_model_prefers_gif(model) && buddy_ui_data_character_available())
     {
-        lv_label_set_text(s_pet_page_count_label, "GIF");
+        snprintf(buffer, sizeof(buffer), "%s / GIF",
+                 model->device_name[0] != '\0' ? model->device_name : "Buddy");
     }
     else
     {
-        snprintf(buffer, sizeof(buffer), "%s", buddy_ascii_species_name(species));
-        lv_label_set_text(s_pet_page_count_label, buffer);
+        snprintf(buffer, sizeof(buffer), "%s / %s",
+                 model->device_name[0] != '\0' ? model->device_name : "Buddy",
+                 buddy_ascii_species_name(species));
     }
+    lv_label_set_text(s_pet_name_label, buffer);
 
     mood_color = model->pet_mood >= 3U ? lv_color_hex(0xFF6B7A) :
                  model->pet_mood >= 2U ? lv_color_hex(0xFFB454) :
@@ -1182,19 +1192,16 @@ static void buddy_ui_update_pet_stats(const buddy_ui_model_t *model, uint32_t no
     snprintf(buffer, sizeof(buffer), "Lv %u", (unsigned int)model->pet_level);
     lv_label_set_text(s_pet_level_label, buffer);
 
-    snprintf(buffer, sizeof(buffer), "approved  %u", (unsigned int)model->pet_approvals);
+    snprintf(buffer, sizeof(buffer), "ok %u", (unsigned int)model->pet_approvals);
     lv_label_set_text(s_pet_approvals_label, buffer);
-    snprintf(buffer, sizeof(buffer), "denied    %u", (unsigned int)model->pet_denials);
+    snprintf(buffer, sizeof(buffer), "no %u", (unsigned int)model->pet_denials);
     lv_label_set_text(s_pet_denials_label, buffer);
-    snprintf(buffer, sizeof(buffer), "median    %us", (unsigned int)model->pet_velocity_seconds);
-    lv_label_set_text(s_pet_median_label, buffer);
-    snprintf(buffer, sizeof(buffer), "napped    %luh%02lum",
-             (unsigned long)(nap / 3600U), (unsigned long)((nap / 60U) % 60U));
+    snprintf(buffer, sizeof(buffer), "nap %luh%02lum",
+             (unsigned long)(nap / 3600U),
+             (unsigned long)((nap / 60U) % 60U));
     lv_label_set_text(s_pet_nap_label, buffer);
-    snprintf(buffer, sizeof(buffer), "tokens    %lu", (unsigned long)model->pet_tokens);
+    snprintf(buffer, sizeof(buffer), "tok %lu", (unsigned long)model->pet_tokens);
     lv_label_set_text(s_pet_tokens_label, buffer);
-    snprintf(buffer, sizeof(buffer), "today     %lu", (unsigned long)model->tokens_today);
-    lv_label_set_text(s_pet_today_label, buffer);
 }
 
 static void buddy_ui_update_info(const buddy_ui_model_t *model)
@@ -1370,7 +1377,6 @@ static void buddy_ui_create_screen(void)
     lv_obj_t *screen = lv_scr_act();
     lv_obj_t *button_row;
     lv_obj_t *row;
-    lv_obj_t *group;
     uint8_t i;
 
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x101419), 0);
@@ -1437,27 +1443,18 @@ static void buddy_ui_create_screen(void)
 
     s_pet_page = buddy_ui_page(screen);
     lv_obj_set_style_pad_row(s_pet_page, metrics.space_sm, 0);
+    lv_obj_clear_flag(s_pet_page, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollbar_mode(s_pet_page, LV_SCROLLBAR_MODE_OFF);
 
-    row = buddy_ui_pet_row(s_pet_page);
-    s_pet_character_label = buddy_ui_label(row, BUDDY_UI_FONT_ASCII, lv_color_hex(0x72D6FF));
-    lv_obj_set_width(s_pet_character_label, lv_pct(54));
+    s_pet_character_label = buddy_ui_label(s_pet_page, BUDDY_UI_FONT_ASCII, lv_color_hex(0x72D6FF));
+    lv_obj_set_width(s_pet_character_label, lv_pct(100));
     lv_obj_set_height(s_pet_character_label, buddy_ui_ascii_label_height(BUDDY_UI_FONT_ASCII));
     lv_label_set_long_mode(s_pet_character_label, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(s_pet_character_label, LV_TEXT_ALIGN_CENTER, 0);
 
-    group = lv_obj_create(row);
-    lv_obj_set_width(group, 0);
-    lv_obj_set_flex_grow(group, 1);
-    lv_obj_set_height(group, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(group, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_bg_opa(group, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(group, 0, 0);
-    lv_obj_set_style_pad_all(group, 0, 0);
-    lv_obj_set_style_pad_row(group, metrics.space_sm, 0);
-    s_pet_name_label = buddy_ui_label(group, BUDDY_UI_FONT_BODY, lv_color_hex(0xF3F6FA));
+    s_pet_name_label = buddy_ui_label(s_pet_page, BUDDY_UI_FONT_SMALL, lv_color_hex(0xFFB454));
+    lv_obj_set_style_text_align(s_pet_name_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(s_pet_name_label, LV_LABEL_LONG_DOT);
-    s_pet_page_count_label = buddy_ui_label(group, BUDDY_UI_FONT_SMALL, lv_color_hex(0xFFB454));
-    lv_obj_set_style_text_align(s_pet_page_count_label, LV_TEXT_ALIGN_RIGHT, 0);
 
     row = buddy_ui_pet_row(s_pet_page);
     buddy_ui_pet_metric_label(row, "mood");
@@ -1494,12 +1491,15 @@ static void buddy_ui_create_screen(void)
     lv_obj_set_style_text_color(s_pet_level_label, lv_color_hex(0x101419), 0);
     lv_obj_center(s_pet_level_label);
 
-    s_pet_approvals_label = buddy_ui_label(s_pet_page, BUDDY_UI_FONT_SMALL, lv_color_hex(0xE1E6EF));
-    s_pet_denials_label = buddy_ui_label(s_pet_page, BUDDY_UI_FONT_SMALL, lv_color_hex(0xE1E6EF));
-    s_pet_median_label = buddy_ui_label(s_pet_page, BUDDY_UI_FONT_SMALL, lv_color_hex(0xB6BCC8));
-    s_pet_nap_label = buddy_ui_label(s_pet_page, BUDDY_UI_FONT_SMALL, lv_color_hex(0xB6BCC8));
-    s_pet_tokens_label = buddy_ui_label(s_pet_page, BUDDY_UI_FONT_SMALL, lv_color_hex(0xB6BCC8));
-    s_pet_today_label = buddy_ui_label(s_pet_page, BUDDY_UI_FONT_SMALL, lv_color_hex(0xB6BCC8));
+    row = buddy_ui_pet_row(s_pet_page);
+    lv_obj_set_style_pad_column(row, metrics.space_md, 0);
+    s_pet_approvals_label = buddy_ui_pet_value_label(row, lv_color_hex(0xE1E6EF));
+    s_pet_denials_label = buddy_ui_pet_value_label(row, lv_color_hex(0xE1E6EF));
+
+    row = buddy_ui_pet_row(s_pet_page);
+    lv_obj_set_style_pad_column(row, metrics.space_md, 0);
+    s_pet_nap_label = buddy_ui_pet_value_label(row, lv_color_hex(0xB6BCC8));
+    s_pet_tokens_label = buddy_ui_pet_value_label(row, lv_color_hex(0xB6BCC8));
 
     s_approval_page = buddy_ui_page(screen);
     s_approval_tool_label = buddy_ui_label(s_approval_page, BUDDY_UI_FONT_TITLE, lv_color_hex(0xF3F6FA));
