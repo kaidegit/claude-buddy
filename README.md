@@ -95,6 +95,24 @@ These tests cover the portable C++ core, JSON line assembler, protocol command
 handling, and ASCII character selection logic. Hardware BLE, display, and
 filesystem behavior still need board-level validation.
 
+## LVGL PC Simulator
+
+Build and run the PC UI simulator from the repository root:
+
+```bash
+cmake -S tools/lvgl_pc_sim -B build/lvgl_pc_sim
+cmake --build build/lvgl_pc_sim -j2
+build/lvgl_pc_sim/buddy_lvgl_pc_sim
+```
+
+Keyboard controls:
+
+- `1`, `Enter`, or Right Arrow: primary action.
+- `2`, `Space`, or Left Arrow: secondary action.
+- `M` or `Tab`: jump to settings.
+- `N` / `B`: next / previous mock scene.
+- `Q` or `Esc`: quit.
+
 ## Development Notes
 
 - Keep protocol and application state portable under `app/src/core`.
