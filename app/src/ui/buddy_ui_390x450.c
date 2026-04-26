@@ -23,8 +23,7 @@
 #define BUDDY_UI_MAX_WAIT_WARNING_S 30U
 #define BUDDY_UI_SETTINGS_COUNT 6U
 #define BUDDY_UI_DEFAULT_BRIGHTNESS 80U
-#define BUDDY_UI_PAGE_ANIM_MS 180U
-#define BUDDY_UI_PAGE_ANIM_OFFSET 36
+#define BUDDY_UI_PAGE_ANIM_MS 220U
 
 #if LV_FONT_MONTSERRAT_36
 #define BUDDY_UI_BUILTIN_FONT_HERO (&lv_font_montserrat_36)
@@ -539,19 +538,9 @@ static uint8_t buddy_ui_view_order(buddy_ui_view_t view)
     }
 }
 
-static bool buddy_ui_view_uses_fade(buddy_ui_view_t view)
-{
-    return view == BUDDY_UI_VIEW_APPROVAL || view == BUDDY_UI_VIEW_PAIRING;
-}
-
 static void buddy_ui_anim_set_x(void *obj, int32_t value)
 {
     lv_obj_set_x((lv_obj_t *)obj, (lv_coord_t)value);
-}
-
-static void buddy_ui_anim_set_opa(void *obj, int32_t value)
-{
-    lv_obj_set_style_opa((lv_obj_t *)obj, (lv_opa_t)value, 0);
 }
 
 static void buddy_ui_page_anim_ready(lv_anim_t *anim)
@@ -576,8 +565,6 @@ static void buddy_ui_page_anim_ready(lv_anim_t *anim)
 static void buddy_ui_start_page_anim(lv_obj_t *page,
                                      lv_coord_t from_x,
                                      lv_coord_t to_x,
-                                     lv_opa_t from_opa,
-                                     lv_opa_t to_opa,
                                      bool hide_when_done,
                                      bool notify_when_done)
 {
@@ -591,7 +578,7 @@ static void buddy_ui_start_page_anim(lv_obj_t *page,
     lv_anim_del(page, NULL);
     buddy_ui_set_hidden(page, false);
     lv_obj_set_x(page, from_x);
-    lv_obj_set_style_opa(page, from_opa, 0);
+    lv_obj_set_style_opa(page, LV_OPA_COVER, 0);
 
     lv_anim_init(&anim);
     lv_anim_set_var(&anim, page);
@@ -599,14 +586,6 @@ static void buddy_ui_start_page_anim(lv_obj_t *page,
     lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
     lv_anim_set_exec_cb(&anim, buddy_ui_anim_set_x);
     lv_anim_set_values(&anim, from_x, to_x);
-    lv_anim_start(&anim);
-
-    lv_anim_init(&anim);
-    lv_anim_set_var(&anim, page);
-    lv_anim_set_time(&anim, BUDDY_UI_PAGE_ANIM_MS);
-    lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
-    lv_anim_set_exec_cb(&anim, buddy_ui_anim_set_opa);
-    lv_anim_set_values(&anim, from_opa, to_opa);
     if (notify_when_done)
     {
         lv_anim_set_ready_cb(&anim, buddy_ui_page_anim_ready);
@@ -617,6 +596,23 @@ static void buddy_ui_start_page_anim(lv_obj_t *page,
     {
         s_anim_old_page = page;
     }
+}
+
+static lv_coord_t buddy_ui_page_anim_distance(void)
+{
+    lv_coord_t width;
+
+    if (s_page_stack != NULL)
+    {
+        lv_obj_update_layout(s_page_stack);
+        width = lv_obj_get_width(s_page_stack);
+        if (width > 0)
+        {
+            return width;
+        }
+    }
+
+    return lv_disp_get_hor_res(lv_disp_get_default());
 }
 
 static lv_obj_t *buddy_ui_pet_row(lv_obj_t *parent)
@@ -1774,9 +1770,9 @@ static void buddy_ui_show_view(buddy_ui_view_t view)
 {
     lv_obj_t *old_page = buddy_ui_page_for_view(s_view);
     lv_obj_t *new_page = buddy_ui_page_for_view(view);
-    bool fade = buddy_ui_view_uses_fade(view) || buddy_ui_view_uses_fade(s_view);
+    lv_coord_t distance = buddy_ui_page_anim_distance();
     lv_coord_t offset = buddy_ui_view_order(view) >= buddy_ui_view_order(s_view) ?
-                            BUDDY_UI_PAGE_ANIM_OFFSET : -BUDDY_UI_PAGE_ANIM_OFFSET;
+                            distance : -distance;
 
     if (old_page == new_page)
     {
@@ -1802,16 +1798,8 @@ static void buddy_ui_show_view(buddy_ui_view_t view)
     buddy_ui_set_hidden(s_settings_page, s_settings_page != old_page && s_settings_page != new_page);
     lv_obj_move_foreground(new_page);
 
-    if (fade)
-    {
-        buddy_ui_start_page_anim(old_page, 0, 0, LV_OPA_COVER, LV_OPA_TRANSP, true, false);
-        buddy_ui_start_page_anim(new_page, 0, 0, LV_OPA_TRANSP, LV_OPA_COVER, false, true);
-    }
-    else
-    {
-        buddy_ui_start_page_anim(old_page, 0, (lv_coord_t)-offset, LV_OPA_COVER, LV_OPA_TRANSP, true, false);
-        buddy_ui_start_page_anim(new_page, offset, 0, LV_OPA_TRANSP, LV_OPA_COVER, false, true);
-    }
+    buddy_ui_start_page_anim(old_page, 0, (lv_coord_t)-offset, true, false);
+    buddy_ui_start_page_anim(new_page, offset, 0, false, true);
 }
 
 static void buddy_ui_refresh(bool force)
