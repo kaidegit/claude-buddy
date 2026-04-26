@@ -400,6 +400,23 @@ static uint32_t buddy_ui_take_actions(void)
     return actions;
 }
 
+#ifdef BUDDY_UI_SIMULATOR
+void buddy_ui_sim_post_primary(void)
+{
+    buddy_ui_post_action(BUDDY_UI_ACTION_PRIMARY);
+}
+
+void buddy_ui_sim_post_secondary(void)
+{
+    buddy_ui_post_action(BUDDY_UI_ACTION_SECONDARY);
+}
+
+void buddy_ui_sim_post_menu(void)
+{
+    buddy_ui_post_action(BUDDY_UI_ACTION_MENU);
+}
+#endif
+
 static lv_obj_t *buddy_ui_label(lv_obj_t *parent, const lv_font_t *font, lv_color_t color)
 {
     lv_obj_t *label = lv_label_create(parent);
