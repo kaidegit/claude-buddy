@@ -2,3 +2,7 @@
 	path = SiFli-SDK
 	url = https://github.com/OpenSiFli/SiFli-SDK.git
 	branch = main
+[submodule "third_party/lv_port_pc_vscode"]
+	path = third_party/lv_port_pc_vscode
+	url = https://github.com/lvgl/lv_port_pc_vscode.git
+	branch = release/v8
