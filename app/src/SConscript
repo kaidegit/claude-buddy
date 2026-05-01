@@ -4,7 +4,10 @@ from building import *
 cwd = GetCurrentDir()
 env = GetCurrentEnv()
 
-env.Replace(CXXFLAGS=str(env.get('CXXFLAGS', '')) + ' -std=gnu++17 -fno-exceptions -fno-rtti')
+cxxflags = env.get('CXXFLAGS', [])
+if isinstance(cxxflags, str):
+    env.Replace(CXXFLAGS=Split(cxxflags))
+env.AppendUnique(CXXFLAGS=Split('-std=gnu++17 -fno-exceptions -fno-rtti'))
 
 src = (Glob('*.c') + Glob('ascii/*.cpp') + Glob('ascii/buddies/*.cpp') +
        Glob('bridge/*.cpp') + Glob('core/*.cpp') + Glob('storage/*.c') +
@@ -24,6 +27,6 @@ cpppath = [
     os.path.join(cwd, 'ui'),
 ]
 
-group = DefineGroup('BuddyApp', src, depend=[''], CPPPATH=cpppath)
+group = DefineGroup('BuddyApp', src, depend=[], CPPPATH=cpppath)
 
 Return('group')

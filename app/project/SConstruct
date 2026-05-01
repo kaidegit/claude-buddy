@@ -7,12 +7,10 @@ if not SIFLI_SDK:
     exit()
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.getcwd(), '..'))
-os.environ.setdefault('SIFLI_SDK_BOARD_SEARCH_PATH', os.path.join(PROJECT_ROOT, 'boards'))
+os.environ.setdefault('SIFLI_SDK_BOARD_SEARCH_PATH',
+                      os.path.join(PROJECT_ROOT, 'boards'))
 
 from building import *
-import building as sifli_building
-
-sifli_building.BOARD_SEARCH_PATH = os.environ['SIFLI_SDK_BOARD_SEARCH_PATH']
 
 PrepareEnv()
 AddBootLoader(SIFLI_SDK, rtconfig.CHIP)

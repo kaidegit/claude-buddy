@@ -1,16 +1,17 @@
+import os
+
 from building import *
 
 cwd = GetCurrentDir()
 
-src = Glob('./*.c')
-path =  [cwd,
-         os.path.join(cwd, '../include')]
+src = Glob('*.c')
+path = [cwd, os.path.join(cwd, '..', 'include')]
 
-group = DefineGroup('Drivers', src, depend = [], CPPPATH = path)
+group = DefineGroup('Drivers', src, depend=[], CPPPATH=path)
 
 env = GetCurrentEnv()
-base_script = os.path.join(cwd, '../hs-buddy_base/script/SConscript')
+base_script = os.path.join(cwd, '..', 'hs-buddy_base', 'script', 'SConscript')
 base_variant = os.path.join(env['build_dir'], 'hs-buddy_base')
-group = group + SConscript(base_script, variant_dir=base_variant, duplicate=0)
+group += SConscript(base_script, variant_dir=base_variant, duplicate=0)
 
 Return('group')
