@@ -1,0 +1,33 @@
+rsource "../hs-buddy_base/Kconfig.board"
+
+if BSP_USING_LCD && !BSP_USING_BUILTIN_LCD
+
+choice CUSTOM_LCD_MODULE
+    prompt "Custom LCD driver"
+    default LCD_USING_ST7365_8080_480X272
+
+config LCD_USING_ST7365_8080_480X272
+    bool "ST7365_8080_480X272"
+    select LCD_USING_ST7365
+    select BSP_LCDC_USING_DBI
+    select LCD_USING_PWM_AS_BACKLIGHT
+
+endchoice
+
+config LCD_USING_ST7365
+    bool
+    default n
+
+config LCD_HOR_RES_MAX
+    int
+    default 480 if LCD_USING_ST7365_8080_480X272
+
+config LCD_VER_RES_MAX
+    int
+    default 272 if LCD_USING_ST7365_8080_480X272
+
+config LCD_DPI
+    int
+    default 315 if LCD_USING_ST7365_8080_480X272
+
+endif

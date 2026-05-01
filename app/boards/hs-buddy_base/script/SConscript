@@ -1,0 +1,26 @@
+from building import *
+
+cwd = GetCurrentDir()
+
+src = Glob(os.path.join(cwd, '../*.c'))
+
+if not GetDepend('USING_BATTERY_CALCULATOR'):
+    SrcRemove(src, os.path.join(cwd, '../battery_table.c'))
+
+SIFLI_SDK = os.getenv('SIFLI_SDK')
+
+path =  [os.path.join(cwd, ".."),
+         os.path.join(SIFLI_SDK, 'customer/boards/include')]
+
+env = GetCurrentEnv()
+env.AppendUnique(CPPPATH=path)
+cpppath = env.get('CPPPATH', []) + path
+group = []
+target_root = env.get('BUILD_DIR_FULL_PATH', os.path.abspath(env['build_dir']))
+
+for source in src:
+    target = os.path.join(target_root, 'hs-buddy_base',
+                          os.path.splitext(source.name)[0] + env['OBJSUFFIX'])
+    group += env.Object(target=target, source=source, CPPPATH=cpppath)
+
+Return('group')
