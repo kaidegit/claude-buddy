@@ -1,0 +1,11 @@
+CompileFlags:
+  CompilationDatabase: app/project/build_sf32lb52-lchspi-ulp_hcpu
+  Add:
+    - --target=arm-none-eabi
+  Remove:
+    - -specs=*
+    - --specs=*
+    - -Wl,*
+
+Index:
+  Background: Build

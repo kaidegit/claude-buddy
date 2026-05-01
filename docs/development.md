@@ -108,6 +108,26 @@ arm-none-eabi-size app/project/build_sf32lb52-lchspi-ulp_hcpu/main.elf
 
 Build output is ignored under `app/project/build_*`.
 
+## VS Code clangd
+
+The repository includes `.clangd`, VS Code settings, and an extension
+recommendation for clangd. Generate the firmware compilation database after
+installing/exporting the SiFli SDK environment:
+
+```bash
+tools/generate_compile_commands.sh
+```
+
+Or run the VS Code task `clangd: generate compile_commands.json`. The task uses
+the SDK's native SCons compilation database target and writes:
+
+```text
+app/project/build_sf32lb52-lchspi-ulp_hcpu/compile_commands.json
+```
+
+Reload clangd after regenerating the file so it picks up changed include paths,
+defines, and board configuration.
+
 ## Documentation Checks
 
 For documentation-only changes, at minimum run:
