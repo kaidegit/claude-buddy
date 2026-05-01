@@ -1,0 +1,8 @@
+from building import *
+
+cwd = GetCurrentDir()
+src = Glob('*.c')
+
+group = DefineGroup('Drivers', src, depend=['LCD_USING_ST7365'], CPPPATH=[cwd])
+
+Return('group')
